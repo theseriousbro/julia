@@ -484,6 +484,8 @@ end
 const _Type_name = Type.body.name
 isType(@nospecialize t) = isa(t, DataType) && (t::DataType).name === _Type_name
 
+const _NamedTuple_name = NamedTuple.body.body.name
+
 # true if Type is inlineable as constant (is a singleton)
 function isconstType(@nospecialize t)
     isType(t) || return false
@@ -725,6 +727,10 @@ function isdefined_tfunc(args...)
             end
             if 1 <= idx <= a1.ninitialized
                 return Const(true)
+            elseif a1.name === _NamedTuple_name
+                if isleaftype(a1)
+                    return Const(false)
+                end
             elseif idx <= 0 || (!isvatuple(a1) && idx > fieldcount(a1))
                 return Const(false)
             elseif !isvatuple(a1) && isbits(fieldtype(a1, idx))
@@ -762,7 +768,9 @@ add_tfunc(nfields, 1, 1,
             # TODO: remove with deprecation in builtins.c for nfields(::Type)
             isleaftype(x.parameters[1]) && return Const(old_nfields(x.parameters[1]))
         elseif isa(x,DataType) && !x.abstract && !(x.name === Tuple.name && isvatuple(x)) && x !== DataType
-            return Const(length(x.types))
+            if !(x.name === _NamedTuple_name && !isleaftype(x))
+                return Const(length(x.types))
+            end
         end
         return Int
     end, 0)
@@ -1324,6 +1332,10 @@ function getfield_tfunc(@nospecialize(s00), @nospecialize(name))
         end
         return Any
     end
+    if s.name === _NamedTuple_name && !isleaftype(s)
+        # TODO: better approximate inference
+        return Any
+    end
     if isempty(s.types)
         return Bottom
     end
@@ -1405,6 +1417,9 @@ function fieldtype_tfunc(@nospecialize(s0), @nospecialize(name))
     end
 
     if !isa(u,DataType) || u.abstract
+        return Type
+    end
+    if u.name === _NamedTuple_name && !isleaftype(u)
         return Type
     end
     ftypes = u.types
