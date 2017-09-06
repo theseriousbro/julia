@@ -43,13 +43,15 @@ function choosetests(choices = [])
         "combinatorics", "sysinfo", "env", "rounding", "ranges", "mod2pi",
         "euler", "show", "lineedit", "replcompletions", "repl",
         "replutil", "sets", "goto", "llvmcall", "llvmcall2", "grisu",
-        "nullable", "meta", "stacktraces", "profile", "libgit2", "docs",
+        "null", "meta", "stacktraces", "profile", "libgit2", "docs",
         "markdown", "base64", "serialize", "misc", "threads",
         "enums", "cmdlineargs", "i18n", "workspace", "libdl", "int",
         "checked", "intset", "floatfuncs", "compile", "distributed", "inline",
-        "boundscheck", "error", "ambiguous", "cartesian", "asmvariant", "osutils",
+        "boundscheck", "error", "cartesian", "asmvariant", "osutils",
         "channels", "iostream", "specificity", "codegen", "codevalidation",
-        "reinterpretarray"
+        "reinterpretarray",
+        # FIXME: fix ambiguities
+        "ambiguous"
     ]
     profile_skipped = false
     if startswith(string(Sys.ARCH), "arm")
