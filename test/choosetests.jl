@@ -47,11 +47,9 @@ function choosetests(choices = [])
         "markdown", "base64", "serialize", "misc", "threads",
         "enums", "cmdlineargs", "i18n", "workspace", "libdl", "int",
         "checked", "intset", "floatfuncs", "compile", "distributed", "inline",
-        "boundscheck", "error", "cartesian", "asmvariant", "osutils",
+        "boundscheck", "error", "ambiguous", "cartesian", "asmvariant", "osutils",
         "channels", "iostream", "specificity", "codegen", "codevalidation",
         "reinterpretarray",
-        # FIXME: fix ambiguities
-        "ambiguous"
     ]
     profile_skipped = false
     if startswith(string(Sys.ARCH), "arm")
