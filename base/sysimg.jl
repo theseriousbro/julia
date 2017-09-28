@@ -228,8 +228,8 @@ include("multidimensional.jl")
 include("permuteddimsarray.jl")
 using .PermutedDimsArrays
 
-# Null and Some types
-include("null.jl")
+# Some type
+include("some.jl")
 
 include("broadcast.jl")
 using .Broadcast

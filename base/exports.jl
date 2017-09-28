@@ -78,7 +78,6 @@ export
     Matrix,
     MergeSort,
     NTuple,
-    Null,
     ObjectIdDict,
     OrdinalRange,
     Pair,
@@ -153,7 +152,6 @@ export
     EOFError,
     InvalidStateException,
     KeyError,
-    NullException,
     ParseError,
     SystemError,
     UnicodeError,
@@ -1173,10 +1171,6 @@ export
     unsafe_read,
     unsafe_store!,
     unsafe_write,
-
-# nulls
-    isnull,
-    null,
 
 # Macros
     # parser internal
