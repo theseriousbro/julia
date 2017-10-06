@@ -377,14 +377,11 @@ let s = "CompletionFoo.test4(\"e\",r\" \","
     @test s[r] == "CompletionFoo.test4"
 end
 
-# (As discussed in #19829, the Base.REPLCompletions.get_type function isn't
-#  powerful enough to analyze general dot calls because it can't handle
-#  anonymous-function evaluation.)
 let s = "CompletionFoo.test5(push!(Base.split(\"\",' '),\"\",\"\").==\"\","
     c, r, res = test_complete(s)
     @test !res
-    @test_broken length(c) == 1
-    @test_broken c[1] == string(first(methods(Main.CompletionFoo.test5, Tuple{BitArray{1}})))
+    @test length(c) == 1
+    @test c[1] == string(first(methods(Main.CompletionFoo.test5, Tuple{BitArray{1}})))
 end
 
 let s = "CompletionFoo.test4(CompletionFoo.test_y_array[1]()[1], CompletionFoo.test_y_array[1]()[2], "
