@@ -1916,6 +1916,9 @@ end
 # issue #24167
 @deprecate EnvHash EnvDict
 
+# issue #24019
+@deprecate similar(a::Associative, ::Type{Pair{K,V}}) where {K, V} empty(a, K, V)
+
 # END 0.7 deprecations
 
 # BEGIN 1.0 deprecations
