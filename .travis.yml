@@ -61,6 +61,7 @@ notifications:
           - http://status.julialang.org/put/travis
           - http://julia.mit.edu:8000/travis-hook
 before_install:
+    - rm $TRAVIS_BUILD_DIR/deps/scratch/llvm-3.9.1/build_*/build-configured
     - make check-whitespace
     - if [ `uname` = "Linux" ]; then
         contrib/travis_fastfail.sh || exit 1;
