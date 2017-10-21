@@ -161,7 +161,7 @@ static Constant *julia_const_to_llvm(const void *ptr, jl_datatype_t *bt)
     Type *lt = julia_struct_to_llvm((jl_value_t*)bt, NULL, NULL);
 
     if (type_is_ghost(lt))
-        return UndefValue::get(lt);
+        return UndefValue::get(NoopType);
 
     if (jl_is_primitivetype(bt)) {
         if (lt->isFloatTy()) {
@@ -189,18 +189,14 @@ static Constant *julia_const_to_llvm(const void *ptr, jl_datatype_t *bt)
 
     CompositeType *lct = cast<CompositeType>(lt);
     size_t nf = jl_datatype_nfields(bt);
-    std::vector<Constant*> fields(0);
+    std::vector<Constant*> fields(nf);
     for (size_t i = 0; i < nf; i++) {
         size_t offs = jl_field_offset(bt, i);
         assert(!jl_field_isptr(bt, i));
         jl_value_t *ft = jl_field_type(bt, i);
-        Type *lft = julia_type_to_llvm(ft);
-        if (type_is_ghost(lft))
-            continue;
-        unsigned llvm_idx = isa<StructType>(lt) ? convert_struct_offset(lt, offs) : i;
-        while (fields.size() < llvm_idx)
-            fields.push_back(UndefValue::get(lct->getTypeAtIndex(fields.size())));
+        Type *lft = lct->getTypeAtIndex(i);
         const uint8_t *ov = (const uint8_t*)ptr + offs;
+        Constant *val;
         if (jl_is_uniontype(ft)) {
             // compute the same type layout as julia_struct_to_llvm
             size_t fsz = jl_field_size(bt, i);
@@ -208,50 +204,47 @@ static Constant *julia_const_to_llvm(const void *ptr, jl_datatype_t *bt)
             uint8_t sel = ((const uint8_t*)ptr)[offs + fsz - 1];
             jl_value_t *active_ty = jl_nth_union_component(ft, sel);
             size_t active_sz = jl_datatype_size(active_ty);
-            Type *AlignmentType = IntegerType::get(jl_LLVMContext, 8 * al);
-            unsigned NumATy = (fsz - 1) / al;
-            unsigned remainder = (fsz - 1) % al;
-            while (NumATy--) {
-                Constant *fld;
-                if (active_sz > 0) {
-                    APInt Elem(8 * al, 0);
-                    void *bits = const_cast<uint64_t*>(Elem.getRawData());
-                    if (active_sz > al) {
-                        memcpy(bits, ov, al);
-                        active_sz -= al;
-                    }
-                    else {
-                        memcpy(bits, ov, active_sz);
-                        active_sz = 0;
-                    }
-                    fld = ConstantInt::get(AlignmentType, Elem);
+            ArrayType *aty = cast<ArrayType>(cast<StructType>(lft)->getTypeAtIndex(0u));
+            assert(aty->getElementType() == IntegerType::get(jl_LLVMContext, 8 * al) &&
+                   aty->getNumElements() == (fsz - 1) / al);
+            std::vector<Constant*> ArrayElements(0);
+            for (unsigned j = 0; j < aty->getNumElements(); j++) {
+                APInt Elem(8 * al, 0);
+                void *bits = const_cast<uint64_t*>(Elem.getRawData());
+                if (active_sz > al) {
+                    memcpy(bits, ov, al);
+                    active_sz -= al;
                 }
-                else {
-                    fld = UndefValue::get(AlignmentType);
+                else if (active_sz > 0) {
+                    memcpy(bits, ov, active_sz);
+                    active_sz = 0;
                 }
                 ov += al;
-                fields.push_back(fld);
+                ArrayElements.push_back(ConstantInt::get(aty->getElementType(), Elem));
             }
+            std::vector<Constant*> Elements(0);
+            Elements.push_back(ConstantArray::get(aty, ArrayElements));
+            unsigned remainder = (fsz - 1) % al;
             while (remainder--) {
-                Constant *fld;
+                uint8_t byte;
                 if (active_sz > 0) {
-                    uint8_t byte = *ov;
-                    APInt Elem(8, byte);
+                    byte = *ov;
                     active_sz -= 1;
-                    fld = ConstantInt::get(T_int8, Elem);
                 }
                 else {
-                    fld = UndefValue::get(T_int8);
+                    byte = 0;
                 }
                 ov += 1;
-                fields.push_back(fld);
+                APInt Elem(8, byte);
+                Elements.push_back(ConstantInt::get(T_int8, Elem));
             }
-            fields.push_back(ConstantInt::get(T_int8, sel));
+            Elements.push_back(ConstantInt::get(T_int8, sel));
+            val = ConstantStruct::get(cast<StructType>(lft), Elements);
         }
         else {
-            Constant *val = julia_const_to_llvm(ov, (jl_datatype_t*)ft);
-            fields.push_back(val);
+            val = julia_const_to_llvm(ov, (jl_datatype_t*)ft);
         }
+        fields[i] = val;
     }
 
     if (lct->isVectorTy())
