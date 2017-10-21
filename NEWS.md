@@ -554,6 +554,9 @@ Deprecated or removed
     `ReinterpretArray`. The three argument form of `reinterpret` that implicitly reshapes
     has been deprecated ([#23750]).
 
+  * `a:b` is deprecated for constructing a `StepRange` when `a` and `b` have physical units
+    (Dates and Times). Use `a:s:b`, where `s = Dates.Day(1)` or `s = Dates.Second(1)`.
+
 Command-line option changes
 ---------------------------
 
