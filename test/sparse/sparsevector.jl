@@ -27,11 +27,9 @@ x1_full[SparseArrays.nonzeroinds(spv_x1)] = nonzeros(spv_x1)
 end
 
 @testset "conversion to dense Array" begin
-    for (x, xf) in [(spv_x1, x1_full)]
-        @test isa(Array(x), Vector{Float64})
-        @test Array(x) == xf
-        @test Vector(x) == xf
-    end
+    @test isa(Array(spv_x1), Vector{Float64})
+    @test Array(spv_x1) == x1_full
+    @test Vector(spv_x1) == x1_full
 end
 @testset "show" begin
     @test contains(string(spv_x1), "1.25")
