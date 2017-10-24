@@ -925,7 +925,11 @@ function test_intersection()
     # issue #21118
     A = Tuple{Ref, Vararg{Any}}
     B = Tuple{Vararg{Union{Z,Ref,Void}}} where Z<:Union{Ref,Void}
-    @test B <: _type_intersect(A, B)
+    let T = _type_intersect(A, B)
+        @test T <: A
+        @test T <: B
+        @test Tuple{Ref, Vararg{Union{Ref,Void}}} <: T
+    end
     @testintersect(Tuple{Int,Any,Vararg{A}} where A>:Integer,
                    Tuple{Any,Int,Vararg{A}} where A>:Integer,
                    Tuple{Int,Int,Vararg{A}} where A>:Integer)
