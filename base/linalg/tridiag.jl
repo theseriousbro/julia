@@ -133,11 +133,11 @@ adjoint(M::SymTridiagonal) = conj(M)
 function diag(M::SymTridiagonal{T}, n::Integer=0) where T
     absn = abs(n)
     if absn == 0
-        return M.dv
+        return copy(M.dv)
     elseif absn==1
-        return M.ev
+        return copy(M.ev)
     elseif absn <= size(M,1)
-        return zeros(T,size(M,1)-absn)
+        return fill!(similar(M.dv, size(M,1)-absn), 0)
     else
         throw(ArgumentError(string("requested diagonal, $n, must be at least $(-size(M, 1)) ",
             "and at most $(size(M, 2)) for an $(size(M, 1))-by-$(size(M, 2)) matrix")))
@@ -536,13 +536,13 @@ adjoint(M::Tridiagonal) = conj(transpose(M))
 
 function diag(M::Tridiagonal{T}, n::Integer=0) where T
     if n == 0
-        return M.d
+        return copy(M.d)
     elseif n == -1
-        return M.dl
+        return copy(M.dl)
     elseif n == 1
-        return M.du
+        return copy(M.du)
     elseif abs(n) <= size(M,1)
-        return zeros(T,size(M,1)-abs(n))
+        return fill!(similar(M.d, size(M,1)-abs(n)), 0)
     else
         throw(ArgumentError(string("requested diagonal, $n, must be at least $(-size(M, 1)) ",
             "and at most $(size(M, 2)) for an $(size(M, 1))-by-$(size(M, 2)) matrix")))
