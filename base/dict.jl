@@ -198,7 +198,7 @@ function similar(a::Associative, ::Type{V}, inds) where {V}
     for i in inds
         tmp[i] = nothing
     end
-    return Dict{K, V}(copy(tmp.slots), copy(tmp.keys), tmp.ndel, tmp.count, tmp.age,
+    return Dict{K, V}(tmp.slots, tmp.keys, tmp.ndel, tmp.count, tmp.age,
                       tmp.idxfloor, tmp.maxprobe)
 end
 
@@ -831,12 +831,7 @@ next(::ImmutableDict{K,V}, t) where {K,V} = (Pair{K,V}(t.key, t.value), t.parent
 done(::ImmutableDict, t) = !isdefined(t, :parent)
 length(t::ImmutableDict) = count(x->true, t)
 isempty(t::ImmutableDict) = done(t, start(t))
-function empty(t::ImmutableDict)
-    while isdefined(t, :parent)
-        t = t.parent
-    end
-    return t
-end
+empty(::ImmutableDict, ::Type{K}, ::Type{V}) where {K, V} = ImmutableDict{K,V}()
 
-_similar_for(c::Dict, ::Type{P}, itr, isz) where {P<:Pair} = similar(c, P)
+_similar_for(c::Dict, ::Type{Pair{K,V}}, itr, isz) where {K, V} = empty(c, K, V)
 _similar_for(c::Associative, T, itr, isz) = throw(ArgumentError("for Associatives, similar requires an element type of Pair;\n  if calling map, consider a comprehension instead"))
