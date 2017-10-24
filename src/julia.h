@@ -1552,6 +1552,7 @@ struct _jl_task_t {
 
     /* context and stack */
     jl_jmp_buf ctx;
+    size_t ssize;
     size_t bufsz;
     void *stkbuf;
 
@@ -1562,18 +1563,19 @@ struct _jl_task_t {
     jl_sym_t *state;
     size_t started:1;
 
-    /* TODO: other stuff from old task structure */
-    size_t ssize;
     jl_value_t *consumers;
     jl_value_t *donenotify;
+
     jl_value_t *exception;
     jl_value_t *backtrace;
+
     arraylist_t locks;
 
     /* task entry point, arguments, result, etc. */
+    jl_value_t **args;
+    uint32_t nargs;
     jl_method_instance_t *mfunc;
     jl_generic_fptr_t fptr;
-    jl_value_t *args;
     jl_value_t *result;
 
     /* current exception handler */
@@ -1595,9 +1597,10 @@ struct _jl_task_t {
     int64_t start, end;
 
     /* reduction function, for parfors */
+    jl_value_t **rargs;
+    uint32_t *nrargs;
     jl_method_instance_t *mredfunc;
     jl_generic_fptr_t rfptr;
-    jl_value_t *rargs;
 
     /* parent (first) task of a parfor set */
     jl_task_t *parent;

@@ -264,7 +264,7 @@ void jl_threadfun(void *arg)
     jl_set_base_ctx((char*)&arg);
 #endif
 
-    // set the thread-local tid and wait for a thread group
+    // wait for a thread group
     while (jl_atomic_load_acquire(&tiarg->state) == TI_THREAD_INIT)
         jl_cpu_pause();
 

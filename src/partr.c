@@ -6,14 +6,10 @@
 //     point (partr_coro()), a stack, and a user data pointer (which is the
 //     task pointer).
 //   - ctx_get_user_ptr(): get the user data pointer (the task pointer).
-//   - ctx_is_done(): has the coroutine ended?
 //   - resume(): starts/resumes the coroutine specified by the passed context.
 //   - yield()/yield_value(): causes the calling coroutine to yield back to
 //     where it was resume()d.
 // - stack management. pool of stacks to be implemented.
-// - original task functionality to be integrated.
-//   - world_age should go into task local storage?
-//   - current_module is being obsoleted?
 
 #include <assert.h>
 #include <stdio.h>
@@ -31,6 +27,10 @@ extern "C" {
 #ifdef JULIA_ENABLE_THREADING
 #ifdef JULIA_ENABLE_PARTR
 
+// task states
+extern jl_sym_t *done_sym;
+extern jl_sym_t *failed_sym;
+extern jl_sym_t *runnable_sym;
 
 // multiq
 // ---
@@ -592,7 +592,7 @@ static int run_next()
     ptls->curr_task = NULL;
 
     /* if the task isn't done, it is either in a CQ, or must be re-queued */
-    if (0 /* TODO. !ctx_is_done(task->ctx) */) {
+    if (task->state != done_sym  &&  task->state != failed_sym) {
         /* the yield value tells us if the task is in a CQ */
         if (y != yield_from_sync) {
             /* sticky tasks go to the thread's sticky queue */
@@ -633,23 +633,21 @@ static int run_next()
 
 
 // specialize and compile the user function
-static int setup_task_fun(jl_value_t *_args, jl_method_instance_t **mfunc,
-                          jl_generic_fptr_t *fptr)
+static int setup_task_fun(jl_value_t *_args, jl_value_t ***args, uint32_t *nargs,
+                          jl_method_instance_t **mfunc, jl_generic_fptr_t *fptr)
 {
     jl_ptls_t ptls = jl_get_ptls_states();
 
-    uint32_t nargs;
-    jl_value_t **args;
     if (!jl_is_svec(_args)) {
-        nargs = 1;
-        args = &_args;
+        *nargs = 1;
+        *args = &_args;
     }
     else {
-        nargs = jl_svec_len(_args);
-        args = jl_svec_data(_args);
+        *nargs = jl_svec_len(_args);
+        *args = jl_svec_data(_args);
     }
 
-    *mfunc = jl_lookup_generic(args, nargs,
+    *mfunc = jl_lookup_generic(*args, *nargs,
                                jl_int32hash_fast(jl_return_address()), ptls->world_age);
 
     // Ignore constant return value for now.
@@ -666,15 +664,49 @@ static jl_task_t *new_task(jl_value_t *_args)
     jl_ptls_t ptls = jl_get_ptls_states();
 
     jl_task_t *task = (jl_task_t *)jl_gc_alloc(ptls, sizeof (jl_task_t),
-                                                 jl_task_type);
-    if (setup_task_fun(_args, &task->mfunc, &task->fptr) != 0)
+                                               jl_task_type);
+    if (setup_task_fun(_args, &task->args, &task->nargs, &task->mfunc, &task->fptr) != 0)
         return NULL;
-    task->args = _args;
     task->result = jl_nothing;
+
+    // set up stack with guard page
+    jl_GC_PUSH1(&task);
+    task->ssize = LLT_ALIGN(1*1024*1024, jl_page_size);
+    size_t stkbufsize = ssize + jl_page_size + (jl_page_size - 1);
+    task->stkbuf = (void *)jl_gc_alloc_buf(ptls, stkbufsize);
+    jl_gc_wb_buf(task, task->stkbuf, stkbufsize);
+    char *stk = (char *)LLT_ALIGN((uintptr_t)task->stkbuf, jl_page_size);
+    if (mprotect(stk, jl_page_size - 1, PROT_NONE) == -1)
+        jl_errorf("mprotect: %s", strerror(errno));
+    stk += jl_page_size;
+    // TODO: init_task(task, stk);
+    jl_gc_add_finalizer((jl_value_t *)task, jl_unprotect_stack_func);
+    JL_GC_POP();
+
+    // initialize elements
+    task->next = NULL;
+    task->storage = jl_nothing;
+    task->state = runnable_sym;
+    task->consumers = jl_nothing;
+    task->donenotify = jl_nothing;
+    task->exception = jl_nothing;
+    task->backtrace = jl_nothing;
+    task->eh = NULL;
+    arraylist_new(&task->locks, 0);
+    task->gcstack = NULL;
+
     task->current_module = ptls->current_module;
     task->world_age = ptls->world_age;
+    task->curr_tid = -1;
     task->sticky_tid = -1;
+    task->parent = NULL;
+    task->arr = NULL;
+    task->red = NULL;
+    task->red_result = jl_nothing;
     task->grain_num = -1;
+#ifdef ENABLE_TIMINGS
+    task->timing_stack = NULL;
+#endif
 
     return task;
 }
@@ -740,12 +772,12 @@ int partr_sync(void **r, partr_t t)
        completion queue; the thread that runs the target task will add
        this task back to the ready queue
      */
-    if (0 /* TODO. !ctx_is_done(task->ctx) */) {
+    if (task->state != done_sym  &&  task->state != failed_sym) {
         ptls->curr_task->next = NULL;
         JL_LOCK(&task->cq.lock);
 
         /* ensure the task didn't finish before we got the lock */
-        if (0 /* TODO. !ctx_is_done(task->ctx) */) {
+        if (task->state != done_sym  &&  task->state != failed_sym) {
             /* add the current task to the CQ */
             if (task->cq.head == NULL)
                 task->cq.head = ptls->curr_task;
@@ -791,7 +823,9 @@ int partr_parfor(partr_t *t, jl_value_t *_args, int64_t count, jl_value_t *_rarg
     if (arr == NULL)
         return -1;
     reducer_t *red = NULL;
-    jl_method_instance_t *mredfunc;
+    jl_value_t **rargs = NULL;
+    uint32_t nrargs = 0;
+    jl_method_instance_t *mredfunc = NULL;
     jl_generic_fptr_t rfptr;
     if (_rargs != NULL) {
         red = reducer_alloc();
@@ -799,7 +833,7 @@ int partr_parfor(partr_t *t, jl_value_t *_args, int64_t count, jl_value_t *_rarg
             arriver_free(arr);
             return -2;
         }
-        if (setup_task_fun(_rargs, &mredfunc, &rfptr) != 0) {
+        if (setup_task_fun(_rargs, &rargs, &nrargs, &mredfunc, &rfptr) != 0) {
             reducer_free(red);
             arriver_free(arr);
             return -3;
@@ -825,9 +859,10 @@ int partr_parfor(partr_t *t, jl_value_t *_args, int64_t count, jl_value_t *_rarg
         task->grain_num = i;
         task->arr = arr;
         if (_rargs != NULL) {
+            task->rargs = rargs;
+            task->nrargs = nrargs;
             task->mredfunc = mredfunc;
             task->rfptr = rfptr;
-            task->rargs = _rargs;
             task->red = red;
         }
 
